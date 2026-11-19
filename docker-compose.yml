@@ -1,4 +1,15 @@
 services:
+  integration-test:
+    build: .
+    profiles: [test]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-estulanches}:${POSTGRES_PASSWORD:-estulanches_dev}@db:5432/${POSTGRES_DB:-estulanches}
+      JWT_SECRET: ${JWT_SECRET:-desenvolvimento-troque-esta-chave}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["npm", "run", "test:integration"]
+
   app:
     build: .
     container_name: estulanches-app
@@ -25,6 +36,8 @@ services:
   db:
     image: postgres:16-alpine
     container_name: estulanches-db
+    ports:
+      - "5432:5432"
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-estulanches}

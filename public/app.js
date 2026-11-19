@@ -88,7 +88,6 @@ async function initialize() {
   if (token) {
     try {
       const me = await api('/orders');
-      // A validação do token ocorre pela rota protegida; os dados do usuário ficam no token JWT.
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       currentUser = { id: payload.id, name: payload.name, role: payload.role };
       void me;

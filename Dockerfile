@@ -8,6 +8,7 @@ RUN npm install --omit=dev && npm cache clean --force
 
 COPY src ./src
 COPY public ./public
+COPY tests ./tests
 
 EXPOSE 3000
 USER node

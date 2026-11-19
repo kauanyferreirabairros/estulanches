@@ -3,14 +3,21 @@ export function calculateTotal(items) {
     throw new Error('O pedido precisa conter pelo menos um produto.');
   }
 
-  return items.reduce((total, item) => {
+  const totalInCents = items.reduce((total, item) => {
     const price = Number(item.price);
     const quantity = Number(item.quantity);
-    if (!Number.isFinite(price) || price < 0 || !Number.isInteger(quantity) || quantity < 1) {
+    if (
+      !Number.isFinite(price) ||
+      price < 0 ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
       throw new Error('Produto ou quantidade inválida.');
     }
-    return total + price * quantity;
+    return total + Math.round(price * 100) * quantity;
   }, 0);
+
+  return totalInCents / 100;
 }
 
 export function normalizeEmail(email) {

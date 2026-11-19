@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
@@ -28,10 +29,21 @@ before(async () => {
 });
 
 after(async () => {
-  if (server) await new Promise(resolve => server.close(resolve));
-  await pool.query('DELETE FROM products WHERE id=$1', [productId]);
-  await pool.query("DELETE FROM users WHERE email='teste-integracao@estulanches.local'");
-  await pool.end();
+  if (server) {
+    await new Promise(resolve => server.close(resolve));
+  }
+
+  try {
+    if (productId) {
+      await pool.query('DELETE FROM products WHERE id=$1', [productId]);
+    }
+
+    await pool.query(
+      "DELETE FROM users WHERE email='teste-integracao@estulanches.local'"
+    );
+  } finally {
+    await pool.end();
+  }
 });
 
 test('API lista produtos disponíveis', async () => {

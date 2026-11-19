@@ -13,7 +13,8 @@ export function createApp(pool) {
   app.use(express.static('public'));
 
   const secret = process.env.JWT_SECRET || 'development-only-secret';
-  const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+  const asyncRoute = (handler) => (req, res, next) =>
+    Promise.resolve(handler(req, res, next)).catch(next);
 
   function authenticate(req, res, next) {
     const token = req.headers.authorization?.startsWith('Bearer ')
@@ -65,12 +66,29 @@ export function createApp(pool) {
     if (!user || typeof password !== 'string' || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
     }
-    const token = jwt.sign({ id: user.id, name: user.name, role: user.role }, secret, { expiresIn: '8h' });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    const token = jwt.sign(
+      { id: user.id, name: user.name, role: user.role },
+      secret,
+      { expiresIn: '8h' },
+    );
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   }));
 
   app.get('/api/products', asyncRoute(async (_req, res) => {
-    const result = await pool.query('SELECT id, name, description, price, available FROM products WHERE available = TRUE ORDER BY name');
+    const result = await pool.query(
+      `SELECT id, name, description, price, available
+       FROM products
+       WHERE available = TRUE
+       ORDER BY name`,
+    );
     res.json(result.rows);
   }));
 
@@ -108,27 +126,51 @@ export function createApp(pool) {
   app.post('/api/orders', authenticate, asyncRoute(async (req, res) => {
     const items = req.body.items;
     if (!Array.isArray(items) || items.length === 0 || items.length > 30) return res.status(400).json({ error: 'Informe de 1 a 30 itens.' });
+    const ids = [...new Set(items.map(item => Number(item?.productId)))];
+    const normalizedItems = items.map(item => ({
+      productId: Number(item?.productId),
+      quantity: Number(item?.quantity)
+    }));
+    if (
+      ids.some(id => !Number.isInteger(id) || id < 1) ||
+      normalizedItems.some(item => !Number.isInteger(item.quantity) || item.quantity < 1)
+    ) {
+      return res.status(400).json({ error: 'Produto ou quantidade inválida.' });
+    }
+
     const client = await pool.connect();
+    let transactionStarted = false;
     try {
       await client.query('BEGIN');
-      const ids = [...new Set(items.map(item => Number(item.productId)))];
-      if (ids.some(id => !Number.isInteger(id) || id < 1)) throw Object.assign(new Error('Produto inválido.'), { status: 400 });
+      transactionStarted = true;
       const products = await client.query('SELECT id, name, price FROM products WHERE available=TRUE AND id = ANY($1::int[])', [ids]);
-      if (products.rows.length !== ids.length) throw Object.assign(new Error('Um ou mais produtos não estão disponíveis.'), { status: 400 });
-      const byId = new Map(products.rows.map(product => [product.id, product]));
-      const normalized = items.map(item => ({ product: byId.get(Number(item.productId)), quantity: Number(item.quantity) }));
-      const total = calculateTotal(normalized.map(item => ({ price: item.product.price, quantity: item.quantity })));
-      const order = await client.query('INSERT INTO orders (user_id, total) VALUES ($1, $2) RETURNING *', [req.user.id, total]);
-      for (const item of normalized) {
-        await client.query(
-          'INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)',
-          [order.rows[0].id, item.product.id, item.quantity, item.product.price]
-        );
+      if (products.rows.length !== ids.length) {
+        throw Object.assign(new Error('Um ou mais produtos não estão disponíveis.'), { status: 400 });
       }
+      const byId = new Map(products.rows.map(product => [product.id, product]));
+      const normalized = normalizedItems.map(item => ({
+        product: byId.get(item.productId),
+        quantity: item.quantity
+      }));
+      const total = calculateTotal(normalized.map(({ product, quantity }) => ({
+        price: product.price,
+        quantity
+      })));
+      const order = await client.query('INSERT INTO orders (user_id, total) VALUES ($1, $2) RETURNING *', [req.user.id, total]);
+      const values = [];
+      const placeholders = normalized.map((item, index) => {
+        const offset = index * 4;
+        values.push(order.rows[0].id, item.product.id, item.quantity, item.product.price);
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`;
+      });
+      await client.query(
+        `INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES ${placeholders.join(', ')}`,
+        values
+      );
       await client.query('COMMIT');
       res.status(201).json({ ...order.rows[0], items: normalized.map(item => ({ product: item.product.name, quantity: item.quantity })) });
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (transactionStarted) await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
