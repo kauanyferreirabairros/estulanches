@@ -88,6 +88,3 @@ docker compose down
 - Helmet e limite de tamanho do JSON.
 - Segredos configuráveis por variáveis de ambiente.
 - Projeto didático: para produção real, adicionar HTTPS, rate limiting, política CORS restritiva, gestão segura de segredos, backups testados, observabilidade, proteção contra abuso e revisão de autorização/fluxos.
-
-## Implantação e RDM
-A ficha RDM deve ser preenchida após a implantação real, com data, horário, versão, parâmetros efetivamente utilizados e resultados observados nos testes. Não registre testes como aprovados antes de executá-los.
